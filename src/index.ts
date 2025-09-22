@@ -319,7 +319,7 @@ const html = `
 						<label for="prompt" class="label-text">描述</label>
 						<button id="inline-random-btn" class="inline-random-btn">🎲 随机</button>
 					</div>
-					<textarea id="prompt" placeholder="例如：骑士, 宝剑..."></textarea>
+					<textarea id="prompt" placeholder="例如：可爱的机器人、勇敢的骑士、神秘的法师..."></textarea>
 				</div>
 			</div>
 			
@@ -378,8 +378,8 @@ const html = `
 
 		generateBtn.addEventListener('click', async () => {
 			const style = styleSelect.value;
-			const prompt = promptInput.value || 'random';
-			const fullPrompt = style + ' style, ' + prompt;
+			const prompt = promptInput.value || 'random character';
+			const fullPrompt = prompt + ', ' + style + ' style';
 			await generateImage(fullPrompt);
 		});
 
@@ -523,7 +523,8 @@ export default {
 			}
 
 			const inputs = {
-				prompt: `你是一个专业的AI图像生成专家，专注于创建头像图片。请根据以下描述生成一张头像图片：${prompt}。要求：图片比例为1:1，格式为PNG，确保清晰度高，适合作为头像使用。`,
+				prompt: `${prompt}, character portrait, standalone character, high quality, detailed face, ((best quality)), ((masterpiece)), sharp focus, 1:1 ratio, PNG format`,
+				negative_prompt: "interior design, room, furniture, architecture, building, indoor, home, office, ((nsfw)), sketch, drawing, painting, low quality, blurry, deformed, ugly, messy, bad anatomy, bad hands, bad eyes, bad face, low resolution, extra limbs, bad proportions, duplicate, cropped, worst quality, multiple views, background, scenery, landscape, cityscape"
 			};
 			
 			try {
@@ -577,15 +578,17 @@ export default {
 				});
 			}
 
-			const styleName = appConfig.styles.find(s => s.value === style)?.label;
+			const styleConfig = appConfig.styles.find(s => s.value === style);
+			const styleName = styleConfig?.label;
+			const styleDescription = styleConfig?.description || '';
 			const messages = [
 				{ 
 					role: "system", 
-					content: "你是一个专业的AI图像描述专家，擅长为头像生成创作精准、富有创意的描述。你的任务是为用户生成适合头像设计的中文描述，要求：1.使用中文描述；2.字数控制在30字以内；3.描述应包含角色特征、外观元素和风格要点。"
+					content: "你是一位资深的AI图像生成提示词工程师，专注于创作高质量的角色头像描述。请根据指定的艺术风格特点，生成符合以下要求的中文提示词：1. 仅输出纯文本描述内容，不要有任何额外说明或标点符号；2. 描述需体现角色核心特征与视觉元素；3. 严格控制在25个汉字以内；4. 确保描述适合头像构图（单体角色、正面/半身视角）；5. 避免产生歧义的表述如'双头'、'多手'等。"
 				},
 				{
 					role: "user",
-					content: `请为"${styleName}"风格生成一个头像描述。要求：1.使用中文；2.字数不超过30个字；3.描述应包含角色特征、外观元素。例如："勇敢的骑士穿着闪亮的盔甲"、"大眼睛的可爱机器人"等。只返回描述内容，不要添加其他文字。`
+					content: `请基于"${styleName}"艺术风格（特点：${styleDescription}），创作一个角色头像的描述词。要求突出角色个性与视觉特征，适用于AI图像生成，输出简短有力的中文短语，长度不超过25字。示例："银甲闪耀的勇猛武士"、"发光电路纹身的赛博少女"。只需返回描述本身。`
 				}
 			];
 			
@@ -596,11 +599,23 @@ export default {
 				);
 				
 				let prompt = response.response || "一个神秘的角色";
-				// Clean up the prompt - remove any quotes or extra formatting
-				prompt = prompt.replace(/^["']|["']$/g, '').trim();
-				// Ensure the prompt is in Chinese and within reasonable length
-				if (prompt.length > 30) {
-					prompt = prompt.substring(0, 30);
+				// 清理响应内容：去除首尾引号、多余空格和非必要字符
+				prompt = prompt
+					.replace(/^["'\s]+|["'\s]+$/g, '')
+					.replace(/^(?:描述：|提示：|prompt：)/i, '')
+					.trim();
+				// 限制最大长度并确保适合作为头像提示词
+				if (prompt.length > 25) {
+					// 尝试在合理位置截断
+					prompt = prompt.substring(0, 25);
+				}
+				// 确保不包含潜在问题词汇
+				const blockedTerms = ['双头', '多手', '两个头', '三条手臂'];
+				for (const term of blockedTerms) {
+					if (prompt.includes(term)) {
+						prompt = "一个独特的角色";
+						break;
+					}
 				}
 				return new Response(JSON.stringify({ prompt }), {
 					headers: { 'Content-Type': 'application/json' },
