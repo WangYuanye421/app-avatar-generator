@@ -361,7 +361,6 @@ const html = `
 		<button id="share-app-btn" title="分享应用"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg></button>
 
 	<script>
-		const resultDiv = document.getElementById('result');
 		const spinner = document.getElementById('spinner');
 		const imageWrapper = document.querySelector('.image-wrapper');
 		const imageContent = document.querySelector('.image-content');
@@ -377,10 +376,33 @@ const html = `
 		const inlineRandomBtn = document.getElementById('inline-random-btn');
 		const styleDescription = document.getElementById('style-description');
 
+		// 检查关键元素是否存在
+		if (!spinner || !imageWrapper || !imageContent || !image || !downloadBtn || 
+			!shareBtn || !placeholder || !stylePreviewOverlay || !styleSelect || 
+			!promptInput || !generateBtn || !inlineRandomBtn || !styleDescription) {
+			console.error('页面初始化失败：一个或多个必需的DOM元素未找到');
+			alert('应用加载失败，请刷新页面重试。');
+			throw new Error('Missing required DOM elements');
+		}
+
 		let imageUrl = '';
 
+		// 检查所有元素是否正确获取
+		if (!inlineRandomBtn) {
+			console.error('无法找到inlineRandomBtn元素');
+		}
+		
+		if (!styleSelect) {
+			console.error('无法找到styleSelect元素');
+		}
+		
+		if (!promptInput) {
+			console.error('无法找到promptInput元素');
+		}
+		
 		// 风格描述映射
 		const styleDescriptions = ${JSON.stringify(styleDescriptions)};
+		const appConfig = ${JSON.stringify(appConfig)};
 
 		// 更新风格描述
 		function updateStyleDescription() {
@@ -409,56 +431,64 @@ const html = `
 		updateStyleDescription();
 
 		// 风格选择变化时更新描述
-		styleSelect.addEventListener('change', updateStyleDescription);
+		if (styleSelect) {
+			styleSelect.addEventListener('change', updateStyleDescription);
+		}
 
-		generateBtn.addEventListener('click', async () => {
-			const style = styleSelect.value;
-			const prompt = promptInput.value || 'random character';
-			let fullPrompt = '';
-			
-			// 如果选择了"无风格，自由描述"选项，则不添加风格后缀
-			if (style === 'none') {
-				fullPrompt = prompt;
-			} else {
-				fullPrompt = prompt + ', ' + style + ' style';
-			}
-			
-			await generateImage(fullPrompt);
-		});
+		if (generateBtn) {
+			generateBtn.addEventListener('click', async () => {
+				const style = styleSelect ? styleSelect.value : 'none';
+				const prompt = (promptInput ? promptInput.value : '') || 'random character';
+				let fullPrompt = '';
+				
+				// 如果选择了"无风格，自由描述"选项，则不添加风格后缀
+				if (style === 'none') {
+					fullPrompt = prompt;
+				} else {
+					fullPrompt = prompt + ', ' + style + ' style';
+				}
+				
+				await generateImage(fullPrompt);
+			});
+		}
 
 		// 新增的行内随机按钮事件
-		inlineRandomBtn.addEventListener('click', async (e) => {
-			e.preventDefault();
-			const style = styleSelect.value;
-			inlineRandomBtn.disabled = true;
-			inlineRandomBtn.textContent = '生成中...';
-			
-			try {
-				const response = await fetch('/api/random-prompt', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({ style }),
-				});
+		if (inlineRandomBtn) {
+			inlineRandomBtn.addEventListener('click', async (e) => {
+				e.preventDefault();
+				const style = styleSelect ? styleSelect.value : 'none';
+				inlineRandomBtn.disabled = true;
+				inlineRandomBtn.textContent = '生成中...';
 				
-				if (response.ok) {
-					const data = await response.json();
-					const prompt = data.prompt;
-					promptInput.value = prompt;
-				} else if (response.status === 429) {
-					const error = await response.json();
-					alert(error.error || '已超出随机描述生成次数限制，请明天再试。');
-				} else {
-					const error = await response.json();
-					alert(error.error || '生成提示词时出错');
+				try {
+					const response = await fetch('/api/random-prompt', {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({ style }),
+					});
+					
+					if (response.ok) {
+						const data = await response.json();
+						const prompt = data.prompt;
+						if (promptInput) {
+							promptInput.value = prompt;
+						}
+					} else if (response.status === 429) {
+						const error = await response.json();
+						alert(error.error || '已超出随机描述生成次数限制，请明天再试。');
+					} else {
+						const error = await response.json();
+						alert(error.error || '生成提示词时出错');
+					}
+				} catch (err) {
+					console.error(err);
+					alert('生成提示词时发生错误。');
+				} finally {
+					inlineRandomBtn.disabled = false;
+					inlineRandomBtn.innerHTML = '🎲 随机';
 				}
-			} catch (err) {
-				console.error(err);
-				alert('生成提示词时发生错误。');
-			} finally {
-				inlineRandomBtn.disabled = false;
-				inlineRandomBtn.innerHTML = '🎲 随机';
-			}
-		});
+			});
+		}
 
 		async function generateImage(prompt) {
 			placeholder.classList.add('hidden');
@@ -518,28 +548,32 @@ const html = `
 			}
 		}
 
-		downloadBtn.addEventListener('click', () => {
-			const a = document.createElement('a');
-			a.href = imageUrl;
-			a.download = 'avatar.png';
-			document.body.appendChild(a);
-			a.click();
-			document.body.removeChild(a);
-		});
+		if (downloadBtn) {
+			downloadBtn.addEventListener('click', () => {
+				const a = document.createElement('a');
+				a.href = imageUrl;
+				a.download = 'avatar.png';
+				document.body.appendChild(a);
+				a.click();
+				document.body.removeChild(a);
+			});
+		}
 
-		shareBtn.addEventListener('click', () => {
-			if (navigator.share) {
-				navigator.share({
-					title: 'AI 头像生成器',
-					text: '快来看看这个 AI 头像生成器！',
-					url: window.location.href,
-				}).catch(console.error);
-			} else {
-				navigator.clipboard.writeText(window.location.href).then(() => {
-					alert('链接已复制到剪贴板！');
-				});
-			}
-		});
+		if (shareBtn) {
+			shareBtn.addEventListener('click', () => {
+				if (navigator.share) {
+					navigator.share({
+						title: 'AI 头像生成器',
+						text: '快来看看这个 AI 头像生成器！',
+						url: window.location.href,
+					}).catch(console.error);
+				} else {
+					navigator.clipboard.writeText(window.location.href).then(() => {
+						alert('链接已复制到剪贴板！');
+					});
+				}
+			});
+		}
 	</script>
 </body>
 </html>
