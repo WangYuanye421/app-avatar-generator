@@ -218,6 +218,22 @@ const html = `
 			font-size: 1rem;
 			padding: 1rem;
 		}
+		.style-preview-overlay {
+			position: absolute;
+			top: 0;
+			left: 0;
+			width: 100%;
+			height: 100%;
+			background: rgba(0, 0, 0, 0.6);
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			z-index: 10;
+			color: white;
+			font-size: 1.5rem;
+			font-weight: bold;
+			text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+		}
 		img {
 			max-width: 100%;
 			max-height: 100%;
@@ -232,10 +248,15 @@ const html = `
 			border-top: 5px solid #ff00c7;
 			border-radius: 50%;
 			animation: spin 1s linear infinite;
+			-webkit-animation: spin 1s linear infinite;
 		}
 		@keyframes spin { 
 			0% { transform: rotate(0deg); } 
 			100% { transform: rotate(360deg); } 
+		}
+		@-webkit-keyframes spin { 
+			0% { -webkit-transform: rotate(0deg); } 
+			100% { -webkit-transform: rotate(360deg); } 
 		}
 		.download-btn {
 			position: absolute;
@@ -248,6 +269,7 @@ const html = `
 			color: var(--text-primary);
 			padding: 0;
 			border: 1px solid var(--border-color);
+			-webkit-backdrop-filter: blur(4px);
 			backdrop-filter: blur(4px);
 		}
 		.download-btn:hover { 
@@ -330,6 +352,7 @@ const html = `
 						<div id="spinner" class="spinner hidden"></div>
 						<div class="image-content hidden">
 							<img id="image" src="" alt="生成的头像">
+							<div id="style-preview-overlay" class="style-preview-overlay hidden">风格预览</div>
 							<button id="download-btn" class="download-btn" title="下载图片"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg></button>
 						</div>
 					</div>
@@ -352,6 +375,7 @@ const html = `
 		const downloadBtn = document.getElementById('download-btn');
 		const shareBtn = document.getElementById('share-app-btn');
 		const placeholder = document.getElementById('placeholder');
+		const stylePreviewOverlay = document.getElementById('style-preview-overlay');
 		
 		const styleSelect = document.getElementById('style');
 		const promptInput = document.getElementById('prompt');
@@ -368,6 +392,23 @@ const html = `
 		function updateStyleDescription() {
 			const selectedStyle = styleSelect.value;
 			styleDescription.textContent = styleDescriptions[selectedStyle] || '';
+			
+			// 显示风格预览（如果已配置）
+			const styleConfig = appConfig.styles.find(s => s.value === selectedStyle);
+			if (styleConfig && styleConfig.previewImage) {
+				// 如果有预览图URL，则显示预览图
+				const previewImage = new Image();
+				previewImage.onload = function() {
+					image.src = styleConfig.previewImage;
+					imageContent.classList.remove('hidden');
+					placeholder.classList.add('hidden');
+					stylePreviewOverlay.classList.remove('hidden');
+				};
+				previewImage.src = styleConfig.previewImage;
+			} else {
+				// 如果没有预览图，则隐藏预览遮罩
+				stylePreviewOverlay.classList.add('hidden');
+			}
 		}
 
 		// 初始化风格描述
@@ -379,7 +420,15 @@ const html = `
 		generateBtn.addEventListener('click', async () => {
 			const style = styleSelect.value;
 			const prompt = promptInput.value || 'random character';
-			const fullPrompt = prompt + ', ' + style + ' style';
+			let fullPrompt = '';
+			
+			// 如果选择了"无风格，自由描述"选项，则不添加风格后缀
+			if (style === 'none') {
+				fullPrompt = prompt;
+			} else {
+				fullPrompt = prompt + ', ' + style + ' style';
+			}
+			
 			await generateImage(fullPrompt);
 		});
 
@@ -418,9 +467,23 @@ const html = `
 		});
 
 		async function generateImage(prompt) {
+			// 重置界面状态
 			placeholder.classList.add('hidden');
 			spinner.classList.remove('hidden');
 			imageContent.classList.add('hidden');
+			stylePreviewOverlay.classList.add('hidden'); // 隐藏风格预览
+			
+			// 显示正在处理的提示
+			placeholder.textContent = '正在处理提示词...';
+			placeholder.classList.remove('hidden');
+			
+			// 检查是否包含中文字符
+			const hasChinese = /[\u4e00-\u9fa5]/.test(prompt);
+			
+			// 如果包含中文，更新提示文本
+			if (hasChinese) {
+				placeholder.textContent = '正在翻译提示词...';
+			}
 
 			try {
 				const response = await fetch('/api/generate', {
@@ -434,18 +497,20 @@ const html = `
 					imageUrl = URL.createObjectURL(blob);
 					image.src = imageUrl;
 					imageContent.classList.remove('hidden');
+					placeholder.classList.add('hidden');
 				} else if (response.status === 429) {
 					const error = await response.json();
-					alert(error.error || '已超出使用次数限制，请明天再试。');
+					placeholder.textContent = error.error || '已超出使用次数限制，请明天再试。';
 				} else {
 					const error = await response.json();
-					alert(error.error);
+					placeholder.textContent = error.error || '生成图片时发生错误。';
 				}
 			} catch (err) {
 				console.error(err);
-				alert('生成图片时发生错误。');
+				placeholder.textContent = '生成图片时发生错误。';
 			} finally {
 				spinner.classList.add('hidden');
+				placeholder.classList.remove('hidden'); // 确保错误信息可见
 			}
 		}
 
@@ -527,6 +592,39 @@ export default {
 				negative_prompt: "interior design, room, furniture, architecture, building, indoor, home, office, ((nsfw)), sketch, drawing, painting, low quality, blurry, deformed, ugly, messy, bad anatomy, bad hands, bad eyes, bad face, low resolution, extra limbs, bad proportions, duplicate, cropped, worst quality, multiple views, background, scenery, landscape, cityscape"
 			};
 			
+			// 检查提示词是否包含中文字符
+			const hasChinese = /[\u4e00-\u9fa5]/.test(prompt);
+			let finalPrompt = prompt;
+			
+			// 如果包含中文，使用LLM将中文提示词翻译为英文
+			if (hasChinese) {
+				try {
+					const translationMessages = [
+						{
+							role: "system",
+							content: "你是一个专业的AI图像生成提示词翻译专家。你的任务是将中文提示词翻译成英文，保持原意并优化为适合Stable Diffusion模型理解的英文提示词。只需要输出翻译后的英文提示词，不要添加任何其他内容。"
+						},
+						{
+							role: "user",
+							content: `请将以下中文提示词翻译为英文：${prompt}`
+						}
+					];
+					
+					const translationResponse = await env.AI.run(
+						'@cf/meta/llama-3.1-8b-instruct',
+						{ messages: translationMessages }
+					);
+					
+					finalPrompt = translationResponse.response || prompt;
+				} catch (translationError) {
+					console.error('翻译提示词时出错:', translationError);
+					// 如果翻译失败，继续使用原始提示词
+				}
+			}
+			
+			// 更新输入提示词（无论是否翻译，都使用最终的提示词）
+			inputs.prompt = `${finalPrompt}, character portrait, standalone character, high quality, detailed face, ((best quality)), ((masterpiece)), sharp focus, 1:1 ratio, PNG format`;
+			
 			try {
 				const response = await env.AI.run(
 					'@cf/stabilityai/stable-diffusion-xl-base-1.0',
@@ -578,54 +676,96 @@ export default {
 				});
 			}
 
-			const styleConfig = appConfig.styles.find(s => s.value === style);
-			const styleName = styleConfig?.label;
-			const styleDescription = styleConfig?.description || '';
-			const messages = [
-				{ 
-					role: "system", 
-					content: "你是一位资深的AI图像生成提示词工程师，专注于创作高质量的角色头像描述。请根据指定的艺术风格特点，生成符合以下要求的中文提示词：1. 仅输出纯文本描述内容，不要有任何额外说明或标点符号；2. 描述需体现角色核心特征与视觉元素；3. 严格控制在25个汉字以内；4. 确保描述适合头像构图（单体角色、正面/半身视角）；5. 避免产生歧义的表述如'双头'、'多手'等。"
-				},
-				{
-					role: "user",
-					content: `请基于"${styleName}"艺术风格（特点：${styleDescription}），创作一个角色头像的描述词。要求突出角色个性与视觉特征，适用于AI图像生成，输出简短有力的中文短语，长度不超过25字。示例："银甲闪耀的勇猛武士"、"发光电路纹身的赛博少女"。只需返回描述本身。`
-				}
-			];
-			
-			try {
-				const response = await env.AI.run(
-					'@cf/meta/llama-3.1-8b-instruct',
-					{ messages }
-				);
-				
-				let prompt = response.response || "一个神秘的角色";
-				// 清理响应内容：去除首尾引号、多余空格和非必要字符
-				prompt = prompt
-					.replace(/^["'\s]+|["'\s]+$/g, '')
-					.replace(/^(?:描述：|提示：|prompt：)/i, '')
-					.trim();
-				// 限制最大长度并确保适合作为头像提示词
-				if (prompt.length > 25) {
-					// 尝试在合理位置截断
-					prompt = prompt.substring(0, 25);
-				}
-				// 确保不包含潜在问题词汇
-				const blockedTerms = ['双头', '多手', '两个头', '三条手臂'];
-				for (const term of blockedTerms) {
-					if (prompt.includes(term)) {
-						prompt = "一个独特的角色";
-						break;
+			let prompt;
+			// 特殊处理 "无风格，自由描述" 选项
+			if (style === 'none') {
+				// 使用更通用的系统提示来激发创造力
+				const messages = [
+					{ 
+						role: "system", 
+						content: "你是一位富有想象力的艺术家，擅长创造独特且引人注目的角色概念。请生成一个用于AI头像生成的简短中文描述。要求：1. 仅输出纯文本描述，不加任何解释或标点；2. 内容要新颖有趣，能激发AI的创造力；3. 严格控制在25个汉字以内；4. 适合作为单体角色头像；5. 避免'双头'、'多手'等会产生歧义的词汇。"
+					},
+					{
+						role: "user",
+						content: "创造一个独特、有趣的角色头像描述，可以是任何你能想到的生物或人物，重点在于创意和视觉冲击力。例如：'星云环绕的精灵女王'、'机械心脏的蒸汽朋克侠客'。直接输出描述。"
 					}
+				];
+				
+				try {
+					const response = await env.AI.run(
+						'@cf/meta/llama-3.1-8b-instruct',
+						{ messages }
+					);
+					
+					prompt = response.response || "一个充满想象力的角色";
+				} catch (e) {
+					console.error('LLM generation failed:', e);
+					prompt = "一个独特的角色";
 				}
-				return new Response(JSON.stringify({ prompt }), {
-					headers: { 'Content-Type': 'application/json' },
-				});
-			} catch (e) {
-				return new Response(JSON.stringify({ error: '生成提示词时发生错误' }), {
-					status: 500,
-					headers: { 'Content-Type': 'application/json' },
-				});
+			} else {
+				// 处理有具体风格的情况
+				const styleConfig = appConfig.styles.find(s => s.value === style);
+				const styleName = styleConfig?.label;
+				const styleDescription = styleConfig?.description || '';
+				
+				// 构建系统提示词
+				let systemPrompt = "你是一位资深的AI图像生成提示词工程师，专注于创作高质量的角色头像描述。请根据指定的艺术风格特点，生成符合以下要求的中文提示词：1. 仅输出纯文本描述内容，不要有任何额外说明或标点符号；2. 描述需体现角色核心特征与视觉元素；3. 严格控制在100个汉字以内；4. 确保描述适合头像构图（单体角色、正面/半身视角）；5. 避免产生歧义的表述如'双头'、'多手'等。";
+				
+				// 构建用户提示词
+				let userPrompt = "";
+				if (style === 'none') {
+					// 对于"无风格，自由描述"选项，提供更通用的提示词生成指导
+					userPrompt = `请创作一个适合用作头像的角色描述，要求突出角色个性与视觉特征，适用于AI图像生成，输出简短有力的中文短语，长度不超过100字。示例："银甲闪耀的勇猛武士"、"发光电路纹身的赛博少女"。只需返回描述本身。`;
+				} else {
+					// 对于其他风格选项，使用原有的提示词结构
+					userPrompt = `请基于"${styleName}"艺术风格（特点：${styleDescription}），创作一个角色头像的描述词。要求突出角色个性与视觉特征，适用于AI图像生成，输出简短有力的中文短语，长度不超过100字。示例："银甲闪耀的勇猛武士"、"发光电路纹身的赛博少女"。只需返回描述本身。`;
+				}
+				
+				const messages = [
+					{ 
+						role: "system", 
+						content: systemPrompt
+					},
+					{
+						role: "user",
+						content: userPrompt
+					}
+				];
+				
+				try {
+					const response = await env.AI.run(
+						'@cf/meta/llama-3.1-8b-instruct',
+						{ messages }
+					);
+					
+					prompt = response.response || "一个神秘的角色";
+				} catch (e) {
+					console.error('LLM generation failed:', e);
+					prompt = "一个独特的角色";
+				}
 			}
+
+			// 统一清理和处理生成的提示词
+			prompt = prompt
+				.replace(/^["'\s]+|["'\s]+$/g, '')
+				.replace(/^(?:描述：|提示：|prompt：)/i, '')
+				.trim();
+			// 限制最大长度
+			if (prompt.length > 25) {
+				prompt = prompt.substring(0, 25);
+			}
+			// 过滤潜在问题词汇
+			const blockedTerms = ['双头', '多手', '两个头', '三条手臂'];
+			for (const term of blockedTerms) {
+				if (prompt.includes(term)) {
+					prompt = "一个独特的角色";
+					break;
+				}
+			}
+			
+			return new Response(JSON.stringify({ prompt }), {
+				headers: { 'Content-Type': 'application/json' },
+			});
 		}
 
 		return new Response('Not Found', {
