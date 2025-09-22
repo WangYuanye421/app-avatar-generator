@@ -55,10 +55,13 @@ const html = `
 			box-sizing: border-box;
 		}
 		.app-header {
-			text-align: center;
 			padding: 1rem;
 			margin-bottom: 1rem;
 			flex-shrink: 0;
+			display: flex;
+			justify-content: center;
+			align-items: center;
+			position: relative;
 		}
 		.app-header h1 {
 			font-size: 1.8rem;
@@ -271,9 +274,6 @@ const html = `
 			transform: scale(1.05);
 		}
 		#share-app-btn {
-			position: fixed;
-			bottom: 1.5rem;
-			right: 1.5rem;
 			width: 60px;
 			height: 60px;
 			border-radius: 50%;
@@ -286,21 +286,39 @@ const html = `
 			justify-content: center;
 			border: none;
 			transition: all 0.2s ease;
+			flex-shrink: 0;
+			position: absolute;
+			right: 1rem;
 		}
 		#share-app-btn:hover { 
 			transform: scale(1.1);
 			box-shadow: 0 8px 25px rgba(255, 0, 199, 0.5);
 		}
-		button svg { 
-			stroke: currentColor; 
-			width: 24px;
-			height: 24px;
+		#share-app-btn svg {
+			width: 32px;
+			height: 32px;
 		}
 		.footer {
 			text-align: center;
 			padding: 1.5rem;
 			color: var(--text-secondary);
 			font-size: 0.9rem;
+		}
+		.custom-development {
+			text-align: center;
+			padding: 1rem;
+			color: var(--text-secondary);
+			font-size: 0.9rem;
+		}
+		.custom-development a {
+			color: var(--primary-color);
+			text-decoration: none;
+			font-weight: 500;
+			transition: color 0.2s ease;
+		}
+		.custom-development a:hover {
+			color: var(--primary-dark);
+			text-decoration: underline;
 		}
 		@media (max-width: 768px) {
 			.input-grid {
@@ -319,6 +337,7 @@ const html = `
 	<div class="app-layout">
 		<header class="app-header">
 			<h1>AI 靓仔头像</h1>
+			<button id="share-app-btn" title="分享应用"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg></button>
 		</header>
 
 		<section class="controls-section">
@@ -357,9 +376,11 @@ const html = `
 				<button id="generate-btn"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg> 生成</button>
 			</div>
 		</section>
-
-		<button id="share-app-btn" title="分享应用"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg></button>
-
+		<div class="custom-development">
+			<a href="https://www.wangyuanye.tech" target="_blank" rel="noopener noreferrer">
+				定制开发，了解更多
+			</a>
+		</div>
 	<script>
 		const spinner = document.getElementById('spinner');
 		const imageWrapper = document.querySelector('.image-wrapper');
