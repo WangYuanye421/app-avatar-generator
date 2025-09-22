@@ -15,14 +15,9 @@
   },
   "kv_namespaces": [
     {
-      "binding": "RATE_LIMITER",
+      "binding": "APP_KV",
       "id": "d9f883be0873485bb07c801e5a8b34ab",
       "preview_id": "local-kv-preview-id"
-    },
-    {
-      "binding": "RANDOM_DESC_LIMITER",
-      "id": "RANDOM_DESC_LIMITER",
-      "preview_id": "local-kv-preview-id-2"
     }
   ]
 }

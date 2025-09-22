@@ -2,8 +2,7 @@ import { appConfig } from './config';
 
 interface Env {
 	AI: Ai;
-	RATE_LIMITER: KVNamespace;
-	RANDOM_DESC_LIMITER: KVNamespace;
+	APP_KV: KVNamespace;
 	MAX_REQUESTS_PER_DAY: string;
 	MAX_RANDOM_DESC_PER_DAY: string;
 }
@@ -494,54 +493,89 @@ export default {
 			const { prompt } = await request.json();
 
 			const maxRequests = parseInt(env.MAX_REQUESTS_PER_DAY, 10);
-			const key = `user:${request.headers.get('cf-connecting-ip')}`;
-			const value = await env.RATE_LIMITER.get(key);
+			const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+			const userAgent = request.headers.get('User-Agent') || 'unknown';
+			const key = `rate_limit:${ip}:${userAgent}`;
 
-			if (value && parseInt(value, 10) >= maxRequests) {
+			const rateLimitData = await env.APP_KV.get(key, { type: 'json' });
+			const { count = 0, timestamp = Date.now() } = (rateLimitData || {}) as { count: number; timestamp: number };
+
+			const isNewDay = new Date().setHours(0, 0, 0, 0) > new Date(timestamp).setHours(0, 0, 0, 0);
+
+			if (isNewDay) {
+				await env.APP_KV.put(key, JSON.stringify({ count: 1, timestamp: Date.now() }), {
+					expirationTtl: 86400,
+				});
+			} else if (count >= maxRequests) {
 				return new Response(
 					JSON.stringify({
 						error: '已超出使用次数限制，请明天再试。',
 					}),
 					{
 						status: 429,
+						headers: { 'Content-Type': 'application/json' },
 					}
 				);
+			} else {
+				await env.APP_KV.put(key, JSON.stringify({ count: count + 1, timestamp }), {
+					expirationTtl: 86400,
+				});
 			}
-
-			const newCount = value ? parseInt(value, 10) + 1 : 1;
-			await env.RATE_LIMITER.put(key, newCount.toString(), {
-				expirationTtl: 86400,
-			});
 
 			const inputs = {
 				prompt: `你是一个专业的AI图像生成专家，专注于创建头像图片。请根据以下描述生成一张头像图片：${prompt}。要求：图片比例为1:1，格式为PNG，确保清晰度高，适合作为头像使用。`,
 			};
-			const response = await env.AI.generate(inputs);
-			return new Response(response);
+			
+			try {
+				const response = await env.AI.run(
+					'@cf/stabilityai/stable-diffusion-xl-base-1.0',
+					inputs
+				);
+				return new Response(response, {
+					headers: {
+						'content-type': 'image/png',
+					},
+				});
+			} catch (e) {
+				return new Response(JSON.stringify({ error: '生成图片时发生错误' }), {
+					status: 500,
+					headers: { 'Content-Type': 'application/json' },
+				});
+			}
 		}
 
 		if (path === '/api/random-prompt') {
 			const { style } = await request.json();
 
 			const maxRequests = parseInt(env.MAX_RANDOM_DESC_PER_DAY, 10);
-			const key = `user:${request.headers.get('cf-connecting-ip')}`;
-			const value = await env.RANDOM_DESC_LIMITER.get(key);
+			const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+			const userAgent = request.headers.get('User-Agent') || 'unknown';
+			const key = `random_desc_limit:${ip}:${userAgent}`;
 
-			if (value && parseInt(value, 10) >= maxRequests) {
+			const rateLimitData = await env.APP_KV.get(key, { type: 'json' });
+			const { count = 0, timestamp = Date.now() } = (rateLimitData || {}) as { count: number; timestamp: number };
+
+			const isNewDay = new Date().setHours(0, 0, 0, 0) > new Date(timestamp).setHours(0, 0, 0, 0);
+
+			if (isNewDay) {
+				await env.APP_KV.put(key, JSON.stringify({ count: 1, timestamp: Date.now() }), {
+					expirationTtl: 86400,
+				});
+			} else if (count >= maxRequests) {
 				return new Response(
 					JSON.stringify({
 						error: '已超出随机描述生成次数限制，请明天再试。',
 					}),
 					{
 						status: 429,
+						headers: { 'Content-Type': 'application/json' },
 					}
 				);
+			} else {
+				await env.APP_KV.put(key, JSON.stringify({ count: count + 1, timestamp }), {
+					expirationTtl: 86400,
+				});
 			}
-
-			const newCount = value ? parseInt(value, 10) + 1 : 1;
-			await env.RANDOM_DESC_LIMITER.put(key, newCount.toString(), {
-				expirationTtl: 86400,
-			});
 
 			const styleName = appConfig.styles.find(s => s.value === style)?.label;
 			const messages = [
@@ -554,20 +588,29 @@ export default {
 					content: `请为"${styleName}"风格生成一个头像描述。要求：1.使用中文；2.字数不超过30个字；3.描述应包含角色特征、外观元素。例如："勇敢的骑士穿着闪亮的盔甲"、"大眼睛的可爱机器人"等。只返回描述内容，不要添加其他文字。`
 				}
 			];
-			const response = await env.AI.run(
-				'@cf/meta/llama-3.1-8b-instruct',
-				{ messages }
-			);
-			let prompt = response || "一个神秘的角色";
-			// Clean up the prompt - remove any quotes or extra formatting
-			prompt = prompt.replace(/^["']|["']$/g, '').trim();
-			// Ensure the prompt is in Chinese and within reasonable length
-			if (prompt.length > 30) {
-				prompt = prompt.substring(0, 30);
+			
+			try {
+				const response = await env.AI.run(
+					'@cf/meta/llama-3.1-8b-instruct',
+					{ messages }
+				);
+				
+				let prompt = response.response || "一个神秘的角色";
+				// Clean up the prompt - remove any quotes or extra formatting
+				prompt = prompt.replace(/^["']|["']$/g, '').trim();
+				// Ensure the prompt is in Chinese and within reasonable length
+				if (prompt.length > 30) {
+					prompt = prompt.substring(0, 30);
+				}
+				return new Response(JSON.stringify({ prompt }), {
+					headers: { 'Content-Type': 'application/json' },
+				});
+			} catch (e) {
+				return new Response(JSON.stringify({ error: '生成提示词时发生错误' }), {
+					status: 500,
+					headers: { 'Content-Type': 'application/json' },
+				});
 			}
-			return new Response(JSON.stringify({ prompt }), {
-				headers: { 'Content-Type': 'application/json' },
-			});
 		}
 
 		return new Response('Not Found', {
