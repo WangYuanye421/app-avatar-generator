@@ -6,7 +6,23 @@
   "ai": {
     "binding": "AI"
   },
+  "vars": {
+    "MAX_REQUESTS_PER_DAY": "20",
+    "MAX_RANDOM_DESC_PER_DAY": "40"
+  },
   "observability": {
     "enabled": true
-  }
+  },
+  "kv_namespaces": [
+    {
+      "binding": "RATE_LIMITER",
+      "id": "d9f883be0873485bb07c801e5a8b34ab",
+      "preview_id": "local-kv-preview-id"
+    },
+    {
+      "binding": "RANDOM_DESC_LIMITER",
+      "id": "RANDOM_DESC_LIMITER",
+      "preview_id": "local-kv-preview-id-2"
+    }
+  ]
 }

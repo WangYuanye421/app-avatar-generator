@@ -4,6 +4,10 @@
 declare namespace Cloudflare {
 	interface Env {
 		AI: Ai;
+		RATE_LIMITER: KVNamespace;
+		RANDOM_DESC_LIMITER: KVNamespace;
+		MAX_REQUESTS_PER_DAY: string;
+		MAX_RANDOM_DESC_PER_DAY: string;
 	}
 }
 interface Env extends Cloudflare.Env {}
