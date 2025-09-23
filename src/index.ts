@@ -370,17 +370,21 @@ const html = `
 		}
 		.modal-content button {
 			width: 100%;
-			padding: 0.8rem;
-			font-size: 1rem;
-			background-color: var(--primary-color);
-			color: white;
-			border: none;
+			padding: 1rem 1.25rem;
 			border-radius: 0.75rem;
+			border: none;
 			cursor: pointer;
-			transition: background-color 0.2s;
+			font-weight: 600;
+			font-size: 1.1rem;
+			transition: all 0.2s ease;
+			background: linear-gradient(to right, #ff00c7, #ff9900);
+			color: white;
+			box-shadow: 0 4px 15px rgba(255, 0, 199, 0.3);
 		}
 		.modal-content button:hover {
-			background-color: var(--primary-dark);
+			background: linear-gradient(to right, #e000b0, #e68a00);
+			box-shadow: 0 6px 20px rgba(255, 0, 199, 0.4);
+			transform: scale(1.02);
 		}
 	</style>
 </head>
