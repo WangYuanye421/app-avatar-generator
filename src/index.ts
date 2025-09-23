@@ -197,17 +197,16 @@ const html = `
 			position: relative;
 			display: flex;
 			width: 100%;
+			max-width: 480px; /* Max size for large screens */
+			margin: 0 auto; /* Center the container */
+			aspect-ratio: 1 / 1;
 			border-radius: 1rem;
 			overflow: hidden;
 			box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
 			border: 1px solid var(--border-color);
 			background-color: var(--card-bg);
-			min-height: 320px;
-			height: 100%;
-			max-height: 320px;
 			align-items: center;
 			justify-content: center;
-			flex: 1;
 		}
 		.image-content {
 			width: 100%;
@@ -227,15 +226,17 @@ const html = `
 			left: 0;
 			width: 100%;
 			height: 100%;
-			background: rgba(0, 0, 0, 0.6);
+			background: linear-gradient(to top, rgba(0, 0, 0, 0.7), transparent);
 			display: flex;
-			align-items: center;
+			align-items: flex-end;
 			justify-content: center;
 			z-index: 10;
 			color: white;
 			font-size: 1.5rem;
 			font-weight: bold;
 			text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+			padding-bottom: 1rem;
+			box-sizing: border-box;
 		}
 		img {
 			max-width: 100%;
@@ -331,6 +332,7 @@ const html = `
 				font-size: 1.5rem;
 			}
 		}
+		
 	</style>
 </head>
 <body>
@@ -521,26 +523,7 @@ const html = `
 			placeholder.textContent = '正在处理提示词...';
 			placeholder.classList.remove('hidden');
 
-      // 创建并添加翻译提示元素
-      let translationHint = document.getElementById('translation-hint');
-      if (!translationHint) {
-        translationHint = document.createElement('div');
-        translationHint.id = 'translation-hint';
-        translationHint.style.cssText = 'position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0, 0, 0, 0.8); color: white; padding: 10px 20px; border-radius: 8px; z-index: 5; font-size: 14px; text-align: center;';
-        translationHint.classList.add('hidden');
-        imageWrapper.appendChild(translationHint);
-      }
-
 			try {
-        // 检查提示词是否包含中文字符
-        const hasChinese = /[\u4e00-\u9fa5]/.test(prompt);
-        
-        // 如果包含中文，显示翻译提示
-        if (hasChinese) {
-          translationHint.textContent = '正在翻译提示词...';
-          translationHint.classList.remove('hidden');
-        }
-
 				const response = await fetch('/api/generate', {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
@@ -565,7 +548,6 @@ const html = `
 				alert('生成图片时发生错误。');
 			} finally {
 				spinner.classList.add('hidden');
-        translationHint.classList.add('hidden'); // 确保最终隐藏
 			}
 		}
 
@@ -615,7 +597,7 @@ export default {
 
 		if (path === '/api/generate') {
 			const requestData = await request.json() as { prompt: string };
-			const { prompt } = requestData;
+			const { prompt: chinesePrompt } = requestData; // Rename for clarity
 
 			const maxRequests = parseInt(env.MAX_REQUESTS_PER_DAY, 10);
 			const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
@@ -647,43 +629,33 @@ export default {
 				});
 			}
 
-			const inputs = {
-				prompt: `${prompt}, character portrait, standalone character, high quality, detailed face, ((best quality)), ((masterpiece)), sharp focus, 1:1 ratio, PNG format`,
-				negative_prompt: "interior design, room, furniture, architecture, building, indoor, home, office, ((nsfw)), sketch, drawing, painting, low quality, blurry, deformed, ugly, messy, bad anatomy, bad hands, bad eyes, bad face, low resolution, extra limbs, bad proportions, duplicate, cropped, worst quality, multiple views, background, scenery, landscape, cityscape"
-			};
-			
-			// 检查提示词是否包含中文字符
-			const hasChinese = /[\u4e00-\u9fa5]/.test(prompt);
-			let finalPrompt = prompt;
-			
-			// 如果包含中文，使用LLM将中文提示词翻译为英文
-			if (hasChinese) {
-				try {
-					const translationMessages = [
-						{
-							role: "system",
-							content: "你是一个专业的AI图像生成提示词翻译专家。你的任务是将中文提示词翻译成英文，保持原意并优化为适合Stable Diffusion模型理解的英文提示词。只需要输出翻译后的英文提示词，不要添加任何其他内容。"
-						},
-						{
-							role: "user",
-							content: `请将以下中文提示词翻译为英文：${prompt}`
-						}
-					];
-					
-					const translationResponse = await env.AI.run(
-						'@cf/meta/llama-3.1-8b-instruct',
-						{ messages: translationMessages }
-					);
-					
-					finalPrompt = translationResponse.response || prompt;
-				} catch (translationError) {
-					console.error('翻译提示词时出错:', translationError);
-					// 如果翻译失败，继续使用原始提示词
+			// Step 1: Translate the Chinese prompt to English
+			const translationMessages = [
+				{ role: "system", content: "You are an expert translator for AI image generation. Translate the following Chinese text to a concise and descriptive English prompt. Output only the translated English text, without any extra explanations." },
+				{ role: "user", content: chinesePrompt }
+			];
+
+			let englishPrompt = '';
+			try {
+				const translationResponse = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', { messages: translationMessages });
+				// Fallback to original prompt if translation fails or is empty
+				let translatedText = translationResponse.response;
+				if (translatedText) {
+					// Clean up the translation response, removing potential quotes or extra text
+					englishPrompt = translatedText.replace(/^[\"'\s]+|[\"'\s]+$/g, '').trim();
+				} else {
+					englishPrompt = chinesePrompt;
 				}
-				
-				// 更新输入提示词
-				inputs.prompt = `${finalPrompt}, character portrait, standalone character, high quality, detailed face, ((best quality)), ((masterpiece)), sharp focus, 1:1 ratio, PNG format`;
+			} catch (e) {
+				console.error('Translation failed:', e);
+				englishPrompt = chinesePrompt; // Fallback on error
 			}
+
+			// Step 2: Use the translated English prompt for image generation
+			const inputs = {
+				prompt: `${englishPrompt}, character portrait, standalone character, high quality, detailed face, best quality, masterpiece, sharp focus, 1:1 ratio`,
+				negative_prompt: "interior design, room, furniture, architecture, building, indoor, home, office, nsfw, sketch, drawing, painting, low quality, blurry, deformed, ugly, messy, bad anatomy, bad hands, bad eyes, bad face, low resolution, extra limbs, bad proportions, duplicate, cropped, worst quality, multiple views, background, scenery, landscape, cityscape"
+			};
 			
 			try {
 				const response = await env.AI.run(
@@ -771,9 +743,10 @@ export default {
 				.replace(/^(?:描述：|提示：|prompt：)/i, '')
 				.trim();
 
-			// 限制最大长度
-			if (prompt.length > 25) {
-				prompt = prompt.substring(0, 25);
+			// 根据风格限制最大长度
+			const maxLength = isNoneStyle ? 25 : 100;
+			if (prompt.length > maxLength) {
+				prompt = prompt.substring(0, maxLength);
 			}
 
 			// 过滤潜在问题词汇

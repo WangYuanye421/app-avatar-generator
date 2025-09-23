@@ -18,13 +18,13 @@ export const appConfig: AppConfig = {
       value: 'none',
       label: '无风格，自由描述',
       description: '不使用特定艺术风格，完全根据描述生成图像',
-      previewImage: ''
+      previewImage: 'http://t2mznic0t.hd-bkt.clouddn.com/avatar.wangyuanye.tech/style_none.png?e=1758614445&token=10TWVlDOhcLqvnc4_cJMvB984LjsE-8rjrENJgQd:_vq68pTTFFmuMbbhG3g5k36GXnY='
     },
     {
       value: 'chibi',
       label: '二头身',
       description: '风格描述：可爱的Q版角色，头部比例较大，身体短小，常用于表现萌系角色',
-      previewImage: ''
+      previewImage: 'http://t2mznic0t.hd-bkt.clouddn.com/avatar.wangyuanye.tech/style_01.png?e=1758614424&token=10TWVlDOhcLqvnc4_cJMvB984LjsE-8rjrENJgQd:rgKsIa3kRIooid2ELE3Y4WsIfPo='
     },
     {
       value: 'pixel-art',
