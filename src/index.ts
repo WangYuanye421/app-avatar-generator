@@ -129,9 +129,9 @@ const html = `
 			resize: vertical;
 		}
 		.inline-random-btn {
-			background: rgba(255, 255, 255, 0.7);
-			color: var(--text-secondary);
-			border: 1px solid var(--border-color);
+			background: linear-gradient(to right, #ff00c7, #ff9900);
+			color: white;
+			border: none;
 			border-radius: 0.5rem;
 			padding: 0.25rem 0.5rem;
 			font-size: 0.85rem;
@@ -140,10 +140,12 @@ const html = `
 			margin-right: 0.5rem;
 			width: auto;
 			min-width: 60px;
+			box-shadow: 0 2px 8px rgba(255, 0, 199, 0.3);
 		}
 		.inline-random-btn:hover {
-			background: rgba(240, 240, 240, 0.7);
-			color: var(--text-primary);
+			background: linear-gradient(to right, #e000b0, #e68a00);
+			color: white;
+			box-shadow: 0 4px 12px rgba(255, 0, 199, 0.4);
 		}
 		.button-grid {
 			display: grid;
@@ -244,7 +246,7 @@ const html = `
 			display: block;
 			object-fit: contain;
 		}
-		.hidden { display: none; }
+		.hidden { display: none !important; }
 		.spinner {
 			width: 50px;
 			height: 50px;
@@ -333,9 +335,69 @@ const html = `
 			}
 		}
 		
+		.modal-overlay {
+			position: fixed;
+			top: 0;
+			left: 0;
+			width: 100%;
+			height: 100%;
+			background-color: rgba(0, 0, 0, 0.6);
+			display: flex;
+			justify-content: center;
+			align-items: center;
+			z-index: 1000;
+			backdrop-filter: blur(5px);
+		}
+		.modal-content {
+			background: var(--card-bg);
+			padding: 2rem;
+			border-radius: 1rem;
+			box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+			max-width: 500px;
+			width: 90%;
+			text-align: left;
+		}
+		.modal-content h2 {
+			margin-top: 0;
+			color: var(--primary-color);
+		}
+		.modal-content ul {
+			list-style-type: none;
+			padding: 0;
+		}
+		.modal-content li {
+			margin-bottom: 1rem;
+		}
+		.modal-content button {
+			width: 100%;
+			padding: 0.8rem;
+			font-size: 1rem;
+			background-color: var(--primary-color);
+			color: white;
+			border: none;
+			border-radius: 0.75rem;
+			cursor: pointer;
+			transition: background-color 0.2s;
+		}
+		.modal-content button:hover {
+			background-color: var(--primary-dark);
+		}
 	</style>
 </head>
 <body>
+	<div id="welcome-guide" class="modal-overlay hidden">
+		<div class="modal-content">
+			<h2>欢迎使用 AI 靓仔头像！</h2>
+			<p>这是一个简单的引导：</p>
+			<ul>
+				<li><strong>1.选择风格:</strong> 从下拉菜单中选择一个您喜欢的艺术风格。</li>
+				<li><strong>2.输入描述:</strong> 在文本框中输入您想要的头像描述，或者点击“随机”按钮获取灵感。</li>
+				<li><strong>3.生成头像:</strong> 点击“生成”按钮，稍等片刻即可看到您的专属头像。</li>
+			</ul>
+			<button id="close-guide-btn">我知道了</button>
+		</div>
+	</div>
+
 	<div class="app-layout">
 		<header class="app-header">
 			<h1>AI 靓仔头像</h1>
@@ -583,6 +645,24 @@ const html = `
 				}
 			});
 		}
+
+		const welcomeGuide = document.getElementById('welcome-guide');
+		const closeGuideBtn = document.getElementById('close-guide-btn');
+
+		if (welcomeGuide && closeGuideBtn) {
+			const hasVisited = localStorage.getItem('hasVisited');
+
+			if (hasVisited !== 'true') {
+				welcomeGuide.classList.remove('hidden');
+			}
+
+			closeGuideBtn.addEventListener('click', () => {
+				welcomeGuide.classList.add('hidden');
+				localStorage.setItem('hasVisited', 'true');
+			});
+		} else {
+			console.error('引导元素未找到');
+		}
 	</script>
 </body>
 </html>
@@ -608,7 +688,7 @@ export default {
 			}
 
 			try {
-				const response = await fetch(imageUrl);
+				const response = await fetch(imageUrl, { cf: { cacheTtl: 86400, cacheEverything: true } });
 				if (!response.ok) {
 					return new Response('Failed to fetch image', { status: response.status, statusText: response.statusText });
 				}
