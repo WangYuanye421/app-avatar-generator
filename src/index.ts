@@ -438,23 +438,18 @@ const html = `
 				// 如果有预览图URL，则显示预览图
 				const previewImage = new Image();
 				previewImage.onload = function() {
-					image.src = styleConfig.previewImage;
+					image.src = this.src; // Use this.src which is the proxy URL
 					imageContent.classList.remove('hidden');
 					placeholder.classList.add('hidden');
 					stylePreviewOverlay.classList.remove('hidden');
 				};
-				// 当HTTPS加载失败时，尝试HTTP
+				// 当图片加载失败时，直接隐藏预览
 				previewImage.onerror = function() {
-					// 如果当前是HTTPS链接，则尝试HTTP版本
-					if (styleConfig.previewImage.startsWith('https://')) {
-						console.log('HTTPS加载失败，尝试HTTP版本');
-						previewImage.src = styleConfig.previewImage.replace('https://', 'http://');
-					} else {
-						// 如果是HTTP链接也加载失败，则隐藏预览
-						stylePreviewOverlay.classList.add('hidden');
-					}
+					console.error('预览图片加载失败:', styleConfig.previewImage);
+					stylePreviewOverlay.classList.add('hidden');
 				};
-				previewImage.src = styleConfig.previewImage;
+				// Use the proxy
+				previewImage.src = '/api/image-proxy?url=' + encodeURIComponent(styleConfig.previewImage);
 			} else {
 				// 如果没有预览图，则隐藏预览遮罩
 				stylePreviewOverlay.classList.add('hidden');
@@ -606,6 +601,29 @@ export default {
 			});
 		}
 
+		if (path.startsWith('/api/image-proxy')) {
+			const imageUrl = url.searchParams.get('url');
+			if (!imageUrl || !imageUrl.startsWith('http://')) {
+				return new Response('Invalid image URL', { status: 400 });
+			}
+
+			try {
+				const response = await fetch(imageUrl);
+				if (!response.ok) {
+					return new Response('Failed to fetch image', { status: response.status, statusText: response.statusText });
+				}
+				const imageResponse = new Response(response.body, {
+					headers: {
+						'Content-Type': response.headers.get('Content-Type') || 'image/png',
+						'Cache-Control': 'public, max-age=86400', // Cache for 1 day
+					},
+				});
+				return imageResponse;
+			} catch (e) {
+				return new Response('Error fetching image', { status: 500 });
+			}
+		}
+
 		if (path === '/api/generate') {
 			const requestData = await request.json() as { prompt: string };
 			const { prompt: chinesePrompt } = requestData; // Rename for clarity
@@ -653,7 +671,7 @@ export default {
 				let translatedText = translationResponse.response;
 				if (translatedText) {
 					// Clean up the translation response, removing potential quotes or extra text
-					englishPrompt = translatedText.replace(/^[\"'\s]+|[\"'\s]+$/g, '').trim();
+					englishPrompt = translatedText.replace(/^["\'\s]+|[\"\'\s]+$/g, '').trim();
 				} else {
 					englishPrompt = chinesePrompt;
 				}
@@ -733,7 +751,7 @@ export default {
 
 			const userPrompt = isNoneStyle
 				? "创造一个独特、有趣的角色头像描述，可以是任何你能想到的生物或人物，重点在于创意和视觉冲击力。例如：'星云环绕的精灵女王'、'机械心脏的蒸汽朋克侠客'。直接输出描述。"
-				: `请基于"${styleName}"艺术风格（特点：${styleDescription}），创作一个角色头像的描述词。要求突出角色个性与视觉特征，适用于AI图像生成，输出简短有力的中文短语，长度不超过100字。示例："银甲闪耀的勇猛武士"、"发光电路纹身的赛博少女"。只需返回描述本身。`;
+				: `请基于"${styleName}"艺术风格（特点：${styleDescription}），创作一个角色头像的描述词。要求突出角色个性与视觉特征，适用于AI图像生成，输出简短有力的中文短语，长度不超过100字。示例：“银甲闪耀的勇猛武士”、“发光电路纹身的赛博少女”。只需返回描述本身。`;
 
 			const messages = [
 				{ role: "system", content: systemPrompt },
@@ -747,10 +765,10 @@ export default {
 				console.error('LLM generation failed:', e);
 				prompt = "一个独特的角色";
 			}
-
+			
 			// 统一清理和处理生成的提示词
 			prompt = prompt
-				.replace(/^["'\s]+|["'\s]+$/g, '')
+				.replace(/^["\'\s]+|[\"\'\s]+$/g, '')
 				.replace(/^(?:描述：|提示：|prompt：)/i, '')
 				.trim();
 
