@@ -443,6 +443,17 @@ const html = `
 					placeholder.classList.add('hidden');
 					stylePreviewOverlay.classList.remove('hidden');
 				};
+				// 当HTTPS加载失败时，尝试HTTP
+				previewImage.onerror = function() {
+					// 如果当前是HTTPS链接，则尝试HTTP版本
+					if (styleConfig.previewImage.startsWith('https://')) {
+						console.log('HTTPS加载失败，尝试HTTP版本');
+						previewImage.src = styleConfig.previewImage.replace('https://', 'http://');
+					} else {
+						// 如果是HTTP链接也加载失败，则隐藏预览
+						stylePreviewOverlay.classList.add('hidden');
+					}
+				};
 				previewImage.src = styleConfig.previewImage;
 			} else {
 				// 如果没有预览图，则隐藏预览遮罩
