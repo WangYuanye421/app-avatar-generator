@@ -685,28 +685,7 @@ export default {
 			});
 		}
 
-		if (path.startsWith('/api/image-proxy')) {
-			const imageUrl = url.searchParams.get('url');
-			if (!imageUrl || !imageUrl.startsWith('http://')) {
-				return new Response('Invalid image URL', { status: 400 });
-			}
-
-			try {
-				const response = await fetch(imageUrl, { cf: { cacheTtl: 86400, cacheEverything: true } });
-				if (!response.ok) {
-					return new Response('Failed to fetch image', { status: response.status, statusText: response.statusText });
-				}
-				const imageResponse = new Response(response.body, {
-					headers: {
-						'Content-Type': response.headers.get('Content-Type') || 'image/png',
-						'Cache-Control': 'public, max-age=86400', // Cache for 1 day
-					},
-				});
-				return imageResponse;
-			} catch (e) {
-				return new Response('Error fetching image', { status: 500 });
-			}
-		}
+		
 
 		if (path === '/api/generate') {
 			const requestData = await request.json() as { prompt: string };
