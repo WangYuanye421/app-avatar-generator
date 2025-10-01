@@ -515,7 +515,7 @@ const html = `
 					stylePreviewOverlay.classList.add('hidden');
 				};
 				// Use the proxy
-				previewImage.src = '/api/image-proxy?url=' + encodeURIComponent(styleConfig.previewImage);
+				styleConfig.previewImage
 			} else {
 				// 如果没有预览图，则隐藏预览遮罩
 				stylePreviewOverlay.classList.add('hidden');
