@@ -2,6 +2,9 @@
   "compatibility_date": "2025-04-01",
   "main": "src/index.ts",
   "name": "app-avatar-generator",
+  "site": {
+    "bucket": "./public"
+  },
   "upload_source_maps": true,
   "ai": {
     "binding": "AI"

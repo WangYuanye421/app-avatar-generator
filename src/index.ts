@@ -5,6 +5,7 @@ interface Env {
 	APP_KV: KVNamespace;
 	MAX_REQUESTS_PER_DAY: string;
 	MAX_RANDOM_DESC_PER_DAY: string;
+	ASSETS: { fetch: (request: Request) => Promise<Response> };
 }
 
 // 从配置中提取风格描述映射
@@ -685,178 +686,185 @@ export default {
 			});
 		}
 
-		
+		if (path.startsWith('/api/')) {
+			if (path === '/api/generate') {
+				const requestData = await request.json() as { prompt: string };
+				const { prompt: chinesePrompt } = requestData; // Rename for clarity
 
-		if (path === '/api/generate') {
-			const requestData = await request.json() as { prompt: string };
-			const { prompt: chinesePrompt } = requestData; // Rename for clarity
+				const maxRequests = parseInt(env.MAX_REQUESTS_PER_DAY, 10);
+				const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+				const userAgent = request.headers.get('User-Agent') || 'unknown';
+				const key = `rate_limit:${ip}:${userAgent}`;
 
-			const maxRequests = parseInt(env.MAX_REQUESTS_PER_DAY, 10);
-			const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
-			const userAgent = request.headers.get('User-Agent') || 'unknown';
-			const key = `rate_limit:${ip}:${userAgent}`;
+				const rateLimitData = await env.APP_KV.get(key, { type: 'json' });
+				const { count = 0, timestamp = Date.now() } = (rateLimitData || {}) as { count: number; timestamp: number };
 
-			const rateLimitData = await env.APP_KV.get(key, { type: 'json' });
-			const { count = 0, timestamp = Date.now() } = (rateLimitData || {}) as { count: number; timestamp: number };
+				const isNewDay = new Date().setHours(0, 0, 0, 0) > new Date(timestamp).setHours(0, 0, 0, 0);
 
-			const isNewDay = new Date().setHours(0, 0, 0, 0) > new Date(timestamp).setHours(0, 0, 0, 0);
-
-			if (isNewDay) {
-				await env.APP_KV.put(key, JSON.stringify({ count: 1, timestamp: Date.now() }), {
-					expirationTtl: 86400,
-				});
-			} else if (count >= maxRequests) {
-				return new Response(
-					JSON.stringify({
-						error: '已超出使用次数限制，请明天再试。',
-					}),
-					{
-						status: 429,
-						headers: { 'Content-Type': 'application/json' },
-					}
-				);
-			} else {
-				await env.APP_KV.put(key, JSON.stringify({ count: count + 1, timestamp }), {
-					expirationTtl: 86400,
-				});
-			}
-
-			// Step 1: Translate the Chinese prompt to English
-			const translationMessages = [
-				{ role: "system", content: "You are an expert translator for AI image generation. Translate the following Chinese text to a concise and descriptive English prompt. Output only the translated English text, without any extra explanations." },
-				{ role: "user", content: chinesePrompt }
-			];
-
-			let englishPrompt = '';
-			try {
-				const translationResponse = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', { messages: translationMessages });
-				// Fallback to original prompt if translation fails or is empty
-				let translatedText = translationResponse.response;
-				if (translatedText) {
-					// Clean up the translation response, removing potential quotes or extra text
-					englishPrompt = translatedText.replace(/^["\'\s]+|[\"\'\s]+$/g, '').trim();
+				if (isNewDay) {
+					await env.APP_KV.put(key, JSON.stringify({ count: 1, timestamp: Date.now() }), {
+						expirationTtl: 86400,
+					});
+				} else if (count >= maxRequests) {
+					return new Response(
+						JSON.stringify({
+							error: '已超出使用次数限制，请明天再试。',
+						}),
+						{
+							status: 429,
+							headers: { 'Content-Type': 'application/json' },
+						}
+					);
 				} else {
-					englishPrompt = chinesePrompt;
+					await env.APP_KV.put(key, JSON.stringify({ count: count + 1, timestamp }), {
+						expirationTtl: 86400,
+					});
 				}
-			} catch (e) {
-				console.error('Translation failed:', e);
-				englishPrompt = chinesePrompt; // Fallback on error
+
+				// Step 1: Translate the Chinese prompt to English
+				const translationMessages = [
+					{ role: "system", content: "You are an expert translator for AI image generation. Translate the following Chinese text to a concise and descriptive English prompt. Output only the translated English text, without any extra explanations." },
+					{ role: "user", content: chinesePrompt }
+				];
+
+				let englishPrompt = '';
+				try {
+					const translationResponse = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', { messages: translationMessages });
+					// Fallback to original prompt if translation fails or is empty
+					let translatedText = translationResponse.response;
+					if (translatedText) {
+						// Clean up the translation response, removing potential quotes or extra text
+						englishPrompt = translatedText.replace(/^["'\s]+|["'\s]+$/g, '').trim();
+					} else {
+						englishPrompt = chinesePrompt;
+					}
+				} catch (e) {
+					console.error('Translation failed:', e);
+					englishPrompt = chinesePrompt; // Fallback on error
+				}
+
+				// Step 2: Use the translated English prompt for image generation
+				const inputs = {
+					prompt: `${englishPrompt}, character portrait, standalone character, high quality, detailed face, best quality, masterpiece, sharp focus, 1:1 ratio`,
+					negative_prompt: "interior design, room, furniture, architecture, building, indoor, home, office, nsfw, sketch, drawing, painting, low quality, blurry, deformed, ugly, messy, bad anatomy, bad hands, bad eyes, bad face, low resolution, extra limbs, bad proportions, duplicate, cropped, worst quality, multiple views, background, scenery, landscape, cityscape"
+				};
+				
+				try {
+					const response = await env.AI.run(
+						'@cf/stabilityai/stable-diffusion-xl-base-1.0',
+						inputs
+					);
+					return new Response(response, {
+						headers: {
+							'content-type': 'image/png',
+						},
+					});
+				} catch (e) {
+					return new Response(JSON.stringify({ error: '生成图片时发生错误' }), {
+						status: 500,
+						headers: { 'Content-Type': 'application/json' },
+					});
+				}
 			}
 
-			// Step 2: Use the translated English prompt for image generation
-			const inputs = {
-				prompt: `${englishPrompt}, character portrait, standalone character, high quality, detailed face, best quality, masterpiece, sharp focus, 1:1 ratio`,
-				negative_prompt: "interior design, room, furniture, architecture, building, indoor, home, office, nsfw, sketch, drawing, painting, low quality, blurry, deformed, ugly, messy, bad anatomy, bad hands, bad eyes, bad face, low resolution, extra limbs, bad proportions, duplicate, cropped, worst quality, multiple views, background, scenery, landscape, cityscape"
-			};
-			
-			try {
-				const response = await env.AI.run(
-					'@cf/stabilityai/stable-diffusion-xl-base-1.0',
-					inputs
-				);
-				return new Response(response, {
-					headers: {
-						'content-type': 'image/png',
-					},
-				});
-			} catch (e) {
-				return new Response(JSON.stringify({ error: '生成图片时发生错误' }), {
-					status: 500,
+			if (path === '/api/random-prompt') {
+				const requestData = await request.json() as { style: string };
+				const { style } = requestData;
+
+				const maxRequests = parseInt(env.MAX_RANDOM_DESC_PER_DAY, 10);
+				const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+				const userAgent = request.headers.get('User-Agent') || 'unknown';
+				const key = `random_desc_limit:${ip}:${userAgent}`;
+
+				const rateLimitData = await env.APP_KV.get(key, { type: 'json' });
+				const { count = 0, timestamp = Date.now() } = (rateLimitData || {}) as { count: number; timestamp: number };
+
+				const isNewDay = new Date().setHours(0, 0, 0, 0) > new Date(timestamp).setHours(0, 0, 0, 0);
+
+				if (isNewDay) {
+					await env.APP_KV.put(key, JSON.stringify({ count: 1, timestamp: Date.now() }), {
+						expirationTtl: 86400,
+					});
+				} else if (count >= maxRequests) {
+					return new Response(
+						JSON.stringify({
+							error: '已超出随机描述生成次数限制，请明天再试。',
+						}),
+						{
+							status: 429,
+							headers: { 'Content-Type': 'application/json' },
+						}
+					);
+				} else {
+					await env.APP_KV.put(key, JSON.stringify({ count: count + 1, timestamp }), {
+						expirationTtl: 86400,
+					});
+				}
+
+				let prompt;
+				const styleConfig = appConfig.styles.find(s => s.value === style);
+				const styleName = styleConfig?.label;
+				const styleDescription = styleConfig?.description || '';
+
+				// 根据是否选择"无风格"使用不同的提示策略
+				const isNoneStyle = style === 'none';
+				const systemPrompt = isNoneStyle 
+					? "你是一位富有想象力的艺术家，擅长创造独特且引人注目的角色概念。请生成一个用于AI头像生成的简短中文描述。要求：1. 仅输出纯文本描述，不加任何解释或标点；2. 内容要新颖有趣，能激发AI的创造力；3. 严格控制在25个汉字以内；4. 适合作为单体角色头像；5. 避免'双头'、'多手'等会产生歧义的词汇。"
+					: "你是一位资深的AI图像生成提示词工程师，专注于创作高质量的角色头像描述。请根据指定的艺术风格特点，生成符合以下要求的中文提示词：1. 仅输出纯文本描述内容，不要有任何额外说明或标点符号；2. 描述需体现角色核心特征与视觉元素；3. 严格控制在100个汉字以内；4. 确保描述适合头像构图（单体角色、正面/半身视角）；5. 避免产生歧义的表述如'双头'、'多手'等。";
+
+				const userPrompt = isNoneStyle
+					? "创造一个独特、有趣的角色头像描述，可以是任何你能想到的生物或人物，重点在于创意和视觉冲击力。例如：'星云环绕的精灵女王'、'机械心脏的蒸汽朋克侠客'。直接输出描述。"
+					: `请基于"${styleName}"艺术风格（特点：${styleDescription}），创作一个角色头像的描述词。要求突出角色个性与视觉特征，适用于AI图像生成，输出简短有力的中文短语，长度不超过100字。示例：“银甲闪耀的勇猛武士”、“发光电路纹身的赛博少女”。只需返回描述本身。`;
+
+				const messages = [
+					{ role: "system", content: systemPrompt },
+					{ role: "user", content: userPrompt }
+				];
+
+				try {
+					const response = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', { messages });
+					prompt = response.response || (isNoneStyle ? "一个充满想象力的角色" : "一个神秘的角色");
+				} catch (e) {
+					console.error('LLM generation failed:', e);
+					prompt = "一个独特的角色";
+				}
+				
+				// 统一清理和处理生成的提示词
+				prompt = prompt
+					.replace(/^["'\s]+|["'\s]+$/g, '')
+					.replace(/^(?:描述：|提示：|prompt：)/i, '')
+					.trim();
+
+				// 根据风格限制最大长度
+				const maxLength = isNoneStyle ? 25 : 100;
+				if (prompt.length > maxLength) {
+					prompt = prompt.substring(0, maxLength);
+				}
+
+				// 过滤潜在问题词汇
+				const blockedTerms = ['双头', '多手', '两个头', '三条手臂'];
+				for (const term of blockedTerms) {
+					if (prompt.includes(term)) {
+						prompt = "一个独特的角色";
+						break;
+					}
+				}
+				
+				return new Response(JSON.stringify({ prompt }), {
 					headers: { 'Content-Type': 'application/json' },
 				});
 			}
+
+			return new Response('API Not Found', { status: 404 });
 		}
 
-		if (path === '/api/random-prompt') {
-			const requestData = await request.json() as { style: string };
-			const { style } = requestData;
-
-			const maxRequests = parseInt(env.MAX_RANDOM_DESC_PER_DAY, 10);
-			const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
-			const userAgent = request.headers.get('User-Agent') || 'unknown';
-			const key = `random_desc_limit:${ip}:${userAgent}`;
-
-			const rateLimitData = await env.APP_KV.get(key, { type: 'json' });
-			const { count = 0, timestamp = Date.now() } = (rateLimitData || {}) as { count: number; timestamp: number };
-
-			const isNewDay = new Date().setHours(0, 0, 0, 0) > new Date(timestamp).setHours(0, 0, 0, 0);
-
-			if (isNewDay) {
-				await env.APP_KV.put(key, JSON.stringify({ count: 1, timestamp: Date.now() }), {
-					expirationTtl: 86400,
-				});
-			} else if (count >= maxRequests) {
-				return new Response(
-					JSON.stringify({
-						error: '已超出随机描述生成次数限制，请明天再试。',
-					}),
-					{
-						status: 429,
-						headers: { 'Content-Type': 'application/json' },
-					}
-				);
-			} else {
-				await env.APP_KV.put(key, JSON.stringify({ count: count + 1, timestamp }), {
-					expirationTtl: 86400,
-				});
-			}
-
-			let prompt;
-			const styleConfig = appConfig.styles.find(s => s.value === style);
-			const styleName = styleConfig?.label;
-			const styleDescription = styleConfig?.description || '';
-
-			// 根据是否选择"无风格"使用不同的提示策略
-			const isNoneStyle = style === 'none';
-			const systemPrompt = isNoneStyle 
-				? "你是一位富有想象力的艺术家，擅长创造独特且引人注目的角色概念。请生成一个用于AI头像生成的简短中文描述。要求：1. 仅输出纯文本描述，不加任何解释或标点；2. 内容要新颖有趣，能激发AI的创造力；3. 严格控制在25个汉字以内；4. 适合作为单体角色头像；5. 避免'双头'、'多手'等会产生歧义的词汇。"
-				: "你是一位资深的AI图像生成提示词工程师，专注于创作高质量的角色头像描述。请根据指定的艺术风格特点，生成符合以下要求的中文提示词：1. 仅输出纯文本描述内容，不要有任何额外说明或标点符号；2. 描述需体现角色核心特征与视觉元素；3. 严格控制在100个汉字以内；4. 确保描述适合头像构图（单体角色、正面/半身视角）；5. 避免产生歧义的表述如'双头'、'多手'等。";
-
-			const userPrompt = isNoneStyle
-				? "创造一个独特、有趣的角色头像描述，可以是任何你能想到的生物或人物，重点在于创意和视觉冲击力。例如：'星云环绕的精灵女王'、'机械心脏的蒸汽朋克侠客'。直接输出描述。"
-				: `请基于"${styleName}"艺术风格（特点：${styleDescription}），创作一个角色头像的描述词。要求突出角色个性与视觉特征，适用于AI图像生成，输出简短有力的中文短语，长度不超过100字。示例：“银甲闪耀的勇猛武士”、“发光电路纹身的赛博少女”。只需返回描述本身。`;
-
-			const messages = [
-				{ role: "system", content: systemPrompt },
-				{ role: "user", content: userPrompt }
-			];
-
-			try {
-				const response = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', { messages });
-				prompt = response.response || (isNoneStyle ? "一个充满想象力的角色" : "一个神秘的角色");
-			} catch (e) {
-				console.error('LLM generation failed:', e);
-				prompt = "一个独特的角色";
-			}
-			
-			// 统一清理和处理生成的提示词
-			prompt = prompt
-				.replace(/^["\'\s]+|[\"\'\s]+$/g, '')
-				.replace(/^(?:描述：|提示：|prompt：)/i, '')
-				.trim();
-
-			// 根据风格限制最大长度
-			const maxLength = isNoneStyle ? 25 : 100;
-			if (prompt.length > maxLength) {
-				prompt = prompt.substring(0, maxLength);
-			}
-
-			// 过滤潜在问题词汇
-			const blockedTerms = ['双头', '多手', '两个头', '三条手臂'];
-			for (const term of blockedTerms) {
-				if (prompt.includes(term)) {
-					prompt = "一个独特的角色";
-					break;
-				}
-			}
-			
-			return new Response(JSON.stringify({ prompt }), {
-				headers: { 'Content-Type': 'application/json' },
-			});
+		// In production, env.ASSETS exists and will serve assets.
+		// In dev, it may not exist, and the dev server handles assets.
+		// If a request reaches here in dev, it's a 404.
+		if (env.ASSETS) {
+			return env.ASSETS.fetch(request);
 		}
 
-		return new Response('Not Found', {
-			status: 404,
-		});
+		return new Response(`Not Found`, { status: 404 });
 	},
 };
