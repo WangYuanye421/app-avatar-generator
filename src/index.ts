@@ -1,14 +1,16 @@
 import { appConfig } from './config';
 
+// The Env interface now includes the binding for our new KV namespace.
 interface Env {
 	AI: Ai;
 	APP_KV: KVNamespace;
+	APP_IMAGES: KVNamespace;
 	MAX_REQUESTS_PER_DAY: string;
 	MAX_RANDOM_DESC_PER_DAY: string;
-	ASSETS: { fetch: (request: Request) => Promise<Response> };
 }
 
-// 从配置中提取风格描述映射
+// This block of code is moved back to the top level of the script.
+// It generates the dynamic parts of our HTML page.
 const styleDescriptions: Record<string, string> = {};
 appConfig.styles.forEach(style => {
 	styleDescriptions[style.value] = style.description;
@@ -438,8 +440,7 @@ const html = `
 							<button id="download-btn" class="download-btn" title="下载图片"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg></button>
 						</div>
 					</div>
-				</div>
-			</section>
+				</section>
 			
 			<div class="button-grid">
 				<button id="generate-btn"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg> 生成</button>
@@ -466,67 +467,62 @@ const html = `
 		const inlineRandomBtn = document.getElementById('inline-random-btn');
 		const styleDescription = document.getElementById('style-description');
 
-		// 检查关键元素是否存在
+		// Check for crucial elements
 		if (!spinner || !imageWrapper || !imageContent || !image || !downloadBtn || 
 			!shareBtn || !placeholder || !stylePreviewOverlay || !styleSelect || 
 			!promptInput || !generateBtn || !inlineRandomBtn || !styleDescription) {
-			console.error('页面初始化失败：一个或多个必需的DOM元素未找到');
-			alert('应用加载失败，请刷新页面重试。');
+			console.error('Page initialization failed: One or more required DOM elements were not found.');
+			alert('Application failed to load. Please refresh the page.');
 			throw new Error('Missing required DOM elements');
 		}
 
 		let imageUrl = '';
-
-		// 检查所有元素是否正确获取
-		if (!inlineRandomBtn) {
-			console.error('无法找到inlineRandomBtn元素');
-		}
 		
-		if (!styleSelect) {
-			console.error('无法找到styleSelect元素');
-		}
-		
-		if (!promptInput) {
-			console.error('无法找到promptInput元素');
-		}
-		
-		// 风格描述映射
+		// Use the config from the server
 		const styleDescriptions = ${JSON.stringify(styleDescriptions)};
 		const appConfig = ${JSON.stringify(appConfig)};
 
-		// 更新风格描述
+		// Function to update the style description
 		function updateStyleDescription() {
 			const selectedStyle = styleSelect.value;
 			styleDescription.textContent = styleDescriptions[selectedStyle] || '';
 			
-			// 显示风格预览（如果已配置）
 			const styleConfig = appConfig.styles.find(s => s.value === selectedStyle);
 			if (styleConfig && styleConfig.previewImage) {
-				// 如果有预览图URL，则显示预览图
+				// Show loading spinner for preview
+				placeholder.classList.add('hidden');
+				imageContent.classList.add('hidden');
+				spinner.classList.remove('hidden');
+
 				const previewImage = new Image();
 				previewImage.onload = function() {
-					image.src = this.src; // Use this.src which is the proxy URL
+					spinner.classList.add('hidden');
+					image.src = this.src;
 					imageContent.classList.remove('hidden');
-					placeholder.classList.add('hidden');
 					stylePreviewOverlay.classList.remove('hidden');
 				};
-				// 当图片加载失败时，直接隐藏预览
 				previewImage.onerror = function() {
+					spinner.classList.add('hidden');
 					console.error('预览图片加载失败:', styleConfig.previewImage);
 					stylePreviewOverlay.classList.add('hidden');
+					placeholder.textContent = '预览加载失败';
+					placeholder.classList.remove('hidden');
 				};
-				// Use the proxy
 				previewImage.src = styleConfig.previewImage;
 			} else {
-				// 如果没有预览图，则隐藏预览遮罩
+				// No preview image for this style
+				spinner.classList.add('hidden');
+				imageContent.classList.add('hidden');
+				placeholder.textContent = '生成的头像将显示在这里';
+				placeholder.classList.remove('hidden');
 				stylePreviewOverlay.classList.add('hidden');
 			}
 		}
 
-		// 初始化风格描述
+		// Initialize style description
 		updateStyleDescription();
 
-		// 风格选择变化时更新描述
+		// Update description on style change
 		if (styleSelect) {
 			styleSelect.addEventListener('change', updateStyleDescription);
 		}
@@ -537,7 +533,6 @@ const html = `
 				const prompt = (promptInput ? promptInput.value : '') || 'random character';
 				let fullPrompt = '';
 				
-				// 如果选择了"无风格，自由描述"选项，则不添加风格后缀
 				if (style === 'none') {
 					fullPrompt = prompt;
 				} else {
@@ -548,13 +543,12 @@ const html = `
 			});
 		}
 
-		// 新增的行内随机按钮事件
 		if (inlineRandomBtn) {
 			inlineRandomBtn.addEventListener('click', async (e) => {
 				e.preventDefault();
 				const style = styleSelect ? styleSelect.value : 'none';
 				inlineRandomBtn.disabled = true;
-				inlineRandomBtn.textContent = '生成中...';
+				inlineRandomBtn.textContent = 'Generating...';
 				
 				try {
 					const response = await fetch('/api/random-prompt', {
@@ -571,17 +565,17 @@ const html = `
 						}
 					} else if (response.status === 429) {
 						const error = await response.json();
-						alert(error.error || '已超出随机描述生成次数限制，请明天再试。');
+						alert(error.error || 'Exceeded random description generation limit. Please try again tomorrow.');
 					} else {
 						const error = await response.json();
-						alert(error.error || '生成提示词时出错');
+						alert(error.error || 'Error generating prompt');
 					}
 				} catch (err) {
 					console.error(err);
-					alert('生成提示词时发生错误。');
+					alert('An error occurred while generating the prompt.');
 				} finally {
 					inlineRandomBtn.disabled = false;
-					inlineRandomBtn.innerHTML = '🎲 随机';
+					inlineRandomBtn.innerHTML = '🎲 Random';
 				}
 			});
 		}
@@ -590,10 +584,9 @@ const html = `
 			placeholder.classList.add('hidden');
 			spinner.classList.remove('hidden');
 			imageContent.classList.add('hidden');
-			stylePreviewOverlay.classList.add('hidden'); // 隐藏风格预览
+			stylePreviewOverlay.classList.add('hidden');
 			
-			// 显示正在处理的提示
-			placeholder.textContent = '正在处理提示词...';
+			placeholder.textContent = 'Processing prompt...';
 			placeholder.classList.remove('hidden');
 
 			try {
@@ -611,14 +604,14 @@ const html = `
 					placeholder.classList.add('hidden');
 				} else if (response.status === 429) {
 					const error = await response.json();
-					alert(error.error || '已超出使用次数限制，请明天再试。');
+					alert(error.error || 'Usage limit exceeded. Please try again tomorrow.');
 				} else {
 					const error = await response.json();
 					alert(error.error);
 				}
 			} catch (err) {
 				console.error(err);
-				alert('生成图片时发生错误。');
+				alert('An error occurred while generating the image.');
 			} finally {
 				spinner.classList.add('hidden');
 			}
@@ -639,13 +632,13 @@ const html = `
 			shareBtn.addEventListener('click', () => {
 				if (navigator.share) {
 					navigator.share({
-						title: 'AI 头像生成器',
-						text: '快来看看这个 AI 头像生成器！',
+						title: 'AI Avatar Generator',
+						text: 'Check out this AI Avatar Generator!',
 						url: window.location.href,
 					}).catch(console.error);
 				} else {
 					navigator.clipboard.writeText(window.location.href).then(() => {
-						alert('链接已复制到剪贴板！');
+						alert('Link copied to clipboard!');
 					});
 				}
 			});
@@ -666,7 +659,7 @@ const html = `
 				localStorage.setItem('hasVisited', 'true');
 			});
 		} else {
-			console.error('引导元素未找到');
+			console.error('Guide elements not found');
 		}
 	</script>
 </body>
@@ -678,14 +671,35 @@ export default {
 		const url = new URL(request.url);
 		const path = url.pathname;
 
+		// Handle the root path to serve the dynamic HTML
 		if (path === '/') {
 			return new Response(html, {
 				headers: {
-					'Content-Type': 'text/html',
+					'Content-Type': 'text/html;charset=UTF-8',
 				},
 			});
 		}
 
+		// Handle image requests from KV
+		if (path.endsWith('.png') || path.endsWith('.ico')) {
+            const key = path.substring(1); // Remove leading '/'
+            try {
+                const image = await env.APP_IMAGES.get(key, { type: 'arrayBuffer' });
+
+                if (image === null) {
+                    return new Response(`Image ${key} not found in KV`, { status: 404 });
+                }
+
+                const contentType = path.endsWith('.png') ? 'image/png' : 'image/x-icon';
+                return new Response(image, {
+                    headers: { 'Content-Type': contentType },
+                });
+            } catch (e) {
+                return new Response('Error reading from KV', { status: 500 });
+            }
+        }
+
+		// Handle API requests
 		if (path.startsWith('/api/')) {
 			if (path === '/api/generate') {
 				const requestData = await request.json() as { prompt: string };
@@ -721,7 +735,6 @@ export default {
 					});
 				}
 
-				// Step 1: Translate the Chinese prompt to English
 				const translationMessages = [
 					{ role: "system", content: "You are an expert translator for AI image generation. Translate the following Chinese text to a concise and descriptive English prompt. Output only the translated English text, without any extra explanations." },
 					{ role: "user", content: chinesePrompt }
@@ -730,11 +743,9 @@ export default {
 				let englishPrompt = '';
 				try {
 					const translationResponse = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', { messages: translationMessages });
-					// Fallback to original prompt if translation fails or is empty
 					let translatedText = translationResponse.response;
 					if (translatedText) {
-						// Clean up the translation response, removing potential quotes or extra text
-						englishPrompt = translatedText.replace(/^["'\s]+|["'\s]+$/g, '').trim();
+						englishPrompt = translatedText.replace(/^["\'\s]+|["\'\s]+$/g, '').trim();
 					} else {
 						englishPrompt = chinesePrompt;
 					}
@@ -743,7 +754,6 @@ export default {
 					englishPrompt = chinesePrompt; // Fallback on error
 				}
 
-				// Step 2: Use the translated English prompt for image generation
 				const inputs = {
 					prompt: `${englishPrompt}, character portrait, standalone character, high quality, detailed face, best quality, masterpiece, sharp focus, 1:1 ratio`,
 					negative_prompt: "interior design, room, furniture, architecture, building, indoor, home, office, nsfw, sketch, drawing, painting, low quality, blurry, deformed, ugly, messy, bad anatomy, bad hands, bad eyes, bad face, low resolution, extra limbs, bad proportions, duplicate, cropped, worst quality, multiple views, background, scenery, landscape, cityscape"
@@ -806,7 +816,6 @@ export default {
 				const styleName = styleConfig?.label;
 				const styleDescription = styleConfig?.description || '';
 
-				// 根据是否选择"无风格"使用不同的提示策略
 				const isNoneStyle = style === 'none';
 				const systemPrompt = isNoneStyle 
 					? "你是一位富有想象力的艺术家，擅长创造独特且引人注目的角色概念。请生成一个用于AI头像生成的简短中文描述。要求：1. 仅输出纯文本描述，不加任何解释或标点；2. 内容要新颖有趣，能激发AI的创造力；3. 严格控制在25个汉字以内；4. 适合作为单体角色头像；5. 避免'双头'、'多手'等会产生歧义的词汇。"
@@ -814,7 +823,7 @@ export default {
 
 				const userPrompt = isNoneStyle
 					? "创造一个独特、有趣的角色头像描述，可以是任何你能想到的生物或人物，重点在于创意和视觉冲击力。例如：'星云环绕的精灵女王'、'机械心脏的蒸汽朋克侠客'。直接输出描述。"
-					: `请基于"${styleName}"艺术风格（特点：${styleDescription}），创作一个角色头像的描述词。要求突出角色个性与视觉特征，适用于AI图像生成，输出简短有力的中文短语，长度不超过100字。示例：“银甲闪耀的勇猛武士”、“发光电路纹身的赛博少女”。只需返回描述本身。`;
+					: `请基于\"${styleName}\"艺术风格（特点：${styleDescription}），创作一个角色头像的描述词。要求突出角色个性与视觉特征，适用于AI图像生成，输出简短有力的中文短语，长度不超过100字。示例：“银甲闪耀的勇猛武士”、“发光电路纹身的赛博少女”。只需返回描述本身。`;
 
 				const messages = [
 					{ role: "system", content: systemPrompt },
@@ -829,19 +838,16 @@ export default {
 					prompt = "一个独特的角色";
 				}
 				
-				// 统一清理和处理生成的提示词
 				prompt = prompt
-					.replace(/^["'\s]+|["'\s]+$/g, '')
+					.replace(/^["\'\s]+|["\'\s]+$/g, '')
 					.replace(/^(?:描述：|提示：|prompt：)/i, '')
 					.trim();
 
-				// 根据风格限制最大长度
 				const maxLength = isNoneStyle ? 25 : 100;
 				if (prompt.length > maxLength) {
 					prompt = prompt.substring(0, maxLength);
 				}
 
-				// 过滤潜在问题词汇
 				const blockedTerms = ['双头', '多手', '两个头', '三条手臂'];
 				for (const term of blockedTerms) {
 					if (prompt.includes(term)) {
@@ -858,13 +864,6 @@ export default {
 			return new Response('API Not Found', { status: 404 });
 		}
 
-		// In production, env.ASSETS exists and will serve assets.
-		// In dev, it may not exist, and the dev server handles assets.
-		// If a request reaches here in dev, it's a 404.
-		if (env.ASSETS) {
-			return env.ASSETS.fetch(request);
-		}
-
-		return new Response(`Not Found`, { status: 404 });
+		return new Response('Not Found', { status: 404 });
 	},
 };

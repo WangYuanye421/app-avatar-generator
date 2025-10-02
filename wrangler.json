@@ -2,9 +2,6 @@
   "compatibility_date": "2025-04-01",
   "main": "src/index.ts",
   "name": "app-avatar-generator",
-  "site": {
-    "bucket": "./public"
-  },
   "upload_source_maps": true,
   "ai": {
     "binding": "AI"
@@ -21,6 +18,11 @@
       "binding": "APP_KV",
       "id": "d9f883be0873485bb07c801e5a8b34ab",
       "preview_id": "local-kv-preview-id"
-    }
+    },
+	{
+	  "binding": "APP_IMAGES",
+	  "id": "ced0ede6965842b5ac65e302b496d946",
+	  "preview_id": "local-images-kv-preview-id"
+	}
   ]
 }
